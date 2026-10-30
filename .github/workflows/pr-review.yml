@@ -71,4 +71,10 @@ jobs:
           else
             echo "Merge refused, as expected."
           fi
+          # Diagnostic: can the bot comment through the issues API (Issues: write)?
+          if gh api "repos/$REPO/issues/$PR/comments" -f body="Permission check: the bot can comment through the issues API."; then
+            echo "Issues API comment worked."
+          else
+            echo "::warning::Issues API comment refused: check the App's Issues permission."
+          fi
           exit $failed
