@@ -1,0 +1,31 @@
+{
+  "extraKnownMarketplaces": {
+    "qe-skills": {
+      "source": { "source": "github", "repo": "lucaram/qe-skills" }
+    }
+  },
+  "enabledPlugins": {
+    "qe@qe-skills": true
+  },
+  "permissions": {
+    "allow": [
+      "mcp__github__pull_request_read",
+      "mcp__github__list_pull_requests"
+    ],
+    "deny": [
+      "mcp__github__merge_pull_request",
+      "mcp__github__pull_request_review_write",
+      "Bash(gh pr merge *)",
+      "Bash(gh pr review *)",
+      "Bash(gh api *)",
+      "Bash(git push origin main*)",
+      "Bash(git push --force*)",
+      "Bash(git push -f*)",
+      "Read(./.env)",
+      "Read(./.env.*)"
+    ],
+    "ask": [
+      "Bash(git push *)"
+    ]
+  }
+}

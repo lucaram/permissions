@@ -1,0 +1,55 @@
+# Comment-only PR reviewer: Claude reviews each PR with the approved review-pr skill
+# from lucaram/qe-skills and posts one comment as qe-pr-reviewer[bot].
+# The bot's token can read code and comment on PRs, but GitHub refuses it any push or merge.
+name: PR review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+# The built-in Actions token gets read-only access; the bot's App token does the commenting.
+permissions:
+  contents: read
+
+concurrency:
+  group: pr-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  review:
+    # PRs from forks get no secrets, so skip them instead of failing.
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      # Exchange the App ID and private key for a token that expires in 1 hour.
+      # The permission-* lines cap the token here, even if the App is given more later.
+      - id: app-token
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ vars.QE_REVIEWER_APP_ID }}
+          private-key: ${{ secrets.QE_REVIEWER_PRIVATE_KEY }}
+          permission-contents: read
+          permission-pull-requests: write   # needed to comment on a PR
+          permission-issues: read
+
+      - uses: anthropics/claude-code-action@v1
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        with:
+          github_token: ${{ steps.app-token.outputs.token }}
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          # The approved skills come only from the central repo, never from this PR or a laptop.
+          plugin_marketplaces: https://github.com/lucaram/qe-skills.git
+          plugins: qe@qe-skills
+          prompt: |
+            REPO: ${{ github.repository }}
+            PR NUMBER: ${{ github.event.pull_request.number }}
+
+            Use the qe:review-pr skill to review this pull request, then post review.md with
+            `gh pr comment ${{ github.event.pull_request.number }} --body-file review.md`.
+          claude_args: |
+            --allowedTools "Skill,Write,Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr comment ${{ github.event.pull_request.number }} --body-file review.md)"
