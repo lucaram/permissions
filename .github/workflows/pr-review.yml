@@ -1,0 +1,71 @@
+# Comment-only PR reviewer: Claude reviews each new PR and posts one comment
+# as qe-pr-reviewer[bot]. The bot's GitHub App can read code and PRs and write
+# comments only, so it cannot push, approve or merge.
+name: PR review
+
+on:
+  pull_request:
+    types: [opened]
+
+# The built-in Actions token gets read-only access; the bot's App token does the commenting.
+permissions:
+  contents: read
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Exchange the App ID and private key for a token that expires in 1 hour.
+      - id: app-token
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ vars.QE_REVIEWER_APP_ID }}
+          private-key: ${{ secrets.QE_REVIEWER_PRIVATE_KEY }}
+
+      - uses: anthropics/claude-code-action@v1
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        with:
+          github_token: ${{ steps.app-token.outputs.token }}
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          prompt: |
+            REPO: ${{ github.repository }}
+            PR NUMBER: ${{ github.event.pull_request.number }}
+
+            Review this pull request for correctness, clarity and missing tests.
+            Post your review as a single PR comment with `gh pr comment`.
+            You only recommend: never approve, push or merge.
+          claude_args: |
+            --allowedTools "Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr comment:*)"
+
+  # Practice test: tries to approve and merge as the bot. Both must be refused by GitHub.
+  # Remove this job once the restriction is confirmed.
+  prove-bot-limits:
+    runs-on: ubuntu-latest
+    steps:
+      - id: app-token
+        uses: actions/create-github-app-token@v2
+        with:
+          app-id: ${{ vars.QE_REVIEWER_APP_ID }}
+          private-key: ${{ secrets.QE_REVIEWER_PRIVATE_KEY }}
+
+      - name: Bot tries to approve and merge (both must fail)
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          PR: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          failed=0
+          if gh pr review "$PR" --approve --repo "$REPO"; then
+            echo "::error::The bot was able to approve. Its permissions are too broad."; failed=1
+          else
+            echo "Approve refused, as expected."
+          fi
+          if gh pr merge "$PR" --squash --repo "$REPO"; then
+            echo "::error::The bot was able to merge. Its permissions are too broad."; failed=1
+          else
+            echo "Merge refused, as expected."
+          fi
+          exit $failed
