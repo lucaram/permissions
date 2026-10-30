@@ -45,6 +45,7 @@ jobs:
           # The approved skills come only from the central repo, never from this PR or a laptop.
           plugin_marketplaces: https://github.com/lucaram/qe-skills.git
           plugins: qe@qe-skills
+          show_full_output: true   # temporary: diagnosing a startup error
           prompt: |
             REPO: ${{ github.repository }}
             PR NUMBER: ${{ github.event.pull_request.number }}
