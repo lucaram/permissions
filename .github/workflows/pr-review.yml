@@ -18,11 +18,15 @@ jobs:
       - uses: actions/checkout@v4
 
       # Exchange the App ID and private key for a token that expires in 1 hour.
+      # The permission-* lines cap the token here, even if the App is given more later.
       - id: app-token
         uses: actions/create-github-app-token@v2
         with:
           app-id: ${{ vars.QE_REVIEWER_APP_ID }}
           private-key: ${{ secrets.QE_REVIEWER_PRIVATE_KEY }}
+          permission-contents: read
+          permission-pull-requests: write   # needed to comment on a PR
+          permission-issues: read
 
       - uses: anthropics/claude-code-action@v1
         env:
@@ -43,8 +47,8 @@ jobs:
           # Practice only: shows each tool call in the log. Turn off for private code.
           show_full_output: true
 
-  # Practice test: tries to approve and merge as the bot. Both must be refused by GitHub.
-  # Remove this job once the restriction is confirmed.
+  # Practice test: tries to merge (and push) as the bot with the same token as the reviewer.
+  # Both must be refused by GitHub with a permission error. Remove this job once confirmed.
   prove-bot-limits:
     runs-on: ubuntu-latest
     steps:
@@ -53,28 +57,28 @@ jobs:
         with:
           app-id: ${{ vars.QE_REVIEWER_APP_ID }}
           private-key: ${{ secrets.QE_REVIEWER_PRIVATE_KEY }}
+          permission-contents: read
+          permission-pull-requests: write
+          permission-issues: read
 
-      - name: Bot tries to approve and merge (both must fail)
+      - name: Bot tries to merge and push (both must be refused for lack of permission)
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
           PR: ${{ github.event.pull_request.number }}
           REPO: ${{ github.repository }}
         run: |
           failed=0
-          if gh pr review "$PR" --approve --repo "$REPO"; then
-            echo "::error::The bot was able to approve. Its permissions are too broad."; failed=1
-          else
-            echo "Approve refused, as expected."
-          fi
-          if gh pr merge "$PR" --squash --repo "$REPO"; then
-            echo "::error::The bot was able to merge. Its permissions are too broad."; failed=1
-          else
-            echo "Merge refused, as expected."
-          fi
-          # Diagnostic: can the bot comment through the issues API (Issues: write)?
-          if gh api "repos/$REPO/issues/$PR/comments" -f body="Permission check: the bot can comment through the issues API."; then
-            echo "Issues API comment worked."
-          else
-            echo "::warning::Issues API comment refused: check the App's Issues permission."
-          fi
+          # Passes only when GitHub refuses with a permission error, not for any other reason.
+          expect_refused() {
+            if out=$("$@" 2>&1); then
+              echo "::error::The bot was able to: $*"; failed=1
+            elif grep -qiE 'not accessible by integration|HTTP 403' <<<"$out"; then
+              echo "Refused (no permission), as expected: $*"
+            else
+              echo "::error::Failed for another reason, so this proves nothing: $out"; failed=1
+            fi
+          }
+          expect_refused gh pr merge "$PR" --squash --repo "$REPO"
+          head=$(gh api "repos/$REPO/commits/HEAD" --jq .sha)
+          expect_refused gh api "repos/$REPO/git/refs" -f ref="refs/heads/bot-probe-$GITHUB_RUN_ID" -f sha="$head"
           exit $failed
