@@ -38,12 +38,10 @@ jobs:
             REPO: ${{ github.repository }}
             PR NUMBER: ${{ github.event.pull_request.number }}
 
-            Review this pull request for correctness, clarity and missing tests.
-            Write your review to review.md with the Write tool, then post it with
+            Use the review-pr skill to review this pull request, then post review.md with
             `gh pr comment ${{ github.event.pull_request.number }} --body-file review.md`.
-            You only recommend: never approve, push or merge.
           claude_args: |
-            --allowedTools "Write,Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr comment:*)"
+            --allowedTools "Skill,Write,Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr comment:*)"
           # Practice only: shows each tool call in the log. Turn off for private code.
           show_full_output: true
 
