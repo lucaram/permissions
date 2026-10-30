@@ -1,3 +1,4 @@
 # AI controls and CI need the AI QE Lead's approval.
 /.github/  @lucaram
 /.claude/  @lucaram
+/.mcp.json @lucaram
