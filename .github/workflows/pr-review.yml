@@ -1,21 +1,29 @@
-# Comment-only PR reviewer: Claude reviews each new PR and posts one comment
-# as qe-pr-reviewer[bot]. The bot's GitHub App can read code and PRs and write
-# comments only, so it cannot push, approve or merge.
+# Comment-only PR reviewer: Claude reviews each PR with the approved review-pr skill
+# from lucaram/qe-skills and posts one comment as qe-pr-reviewer[bot].
+# The bot's token can read code and comment on PRs, but GitHub refuses it any push or merge.
 name: PR review
 
 on:
   pull_request:
-    types: [opened, synchronize]   # synchronize = each new push to the PR
+    types: [opened, synchronize, reopened, ready_for_review]
 
 # The built-in Actions token gets read-only access; the bot's App token does the commenting.
 permissions:
   contents: read
 
+concurrency:
+  group: pr-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
 jobs:
   review:
+    # PRs from forks get no secrets, so skip them instead of failing.
+    if: github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
 
       # Exchange the App ID and private key for a token that expires in 1 hour.
       # The permission-* lines cap the token here, even if the App is given more later.
@@ -34,49 +42,14 @@ jobs:
         with:
           github_token: ${{ steps.app-token.outputs.token }}
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          # The approved skills come only from the central repo, never from this PR or a laptop.
+          plugin_marketplaces: https://github.com/lucaram/qe-skills.git
+          plugins: qe@qe-skills
           prompt: |
             REPO: ${{ github.repository }}
             PR NUMBER: ${{ github.event.pull_request.number }}
 
-            Use the review-pr skill to review this pull request, then post review.md with
+            Use the qe:review-pr skill to review this pull request, then post review.md with
             `gh pr comment ${{ github.event.pull_request.number }} --body-file review.md`.
           claude_args: |
-            --allowedTools "Skill,Write,Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr comment:*)"
-          # Practice only: shows each tool call in the log. Turn off for private code.
-          show_full_output: true
-
-  # Practice test: tries to merge (and push) as the bot with the same token as the reviewer.
-  # Both must be refused by GitHub with a permission error. Remove this job once confirmed.
-  prove-bot-limits:
-    runs-on: ubuntu-latest
-    steps:
-      - id: app-token
-        uses: actions/create-github-app-token@v2
-        with:
-          app-id: ${{ vars.QE_REVIEWER_APP_ID }}
-          private-key: ${{ secrets.QE_REVIEWER_PRIVATE_KEY }}
-          permission-contents: read
-          permission-pull-requests: write
-          permission-issues: read
-
-      - name: Bot tries to merge and push (both must be refused for lack of permission)
-        env:
-          GH_TOKEN: ${{ steps.app-token.outputs.token }}
-          PR: ${{ github.event.pull_request.number }}
-          REPO: ${{ github.repository }}
-        run: |
-          failed=0
-          # Passes only when GitHub refuses with a permission error, not for any other reason.
-          expect_refused() {
-            if out=$("$@" 2>&1); then
-              echo "::error::The bot was able to: $*"; failed=1
-            elif grep -qiE 'not accessible by integration|HTTP 403' <<<"$out"; then
-              echo "Refused (no permission), as expected: $*"
-            else
-              echo "::error::Failed for another reason, so this proves nothing: $out"; failed=1
-            fi
-          }
-          expect_refused gh pr merge "$PR" --squash --repo "$REPO"
-          head=$(gh api "repos/$REPO/commits/HEAD" --jq .sha)
-          expect_refused gh api "repos/$REPO/git/refs" -f ref="refs/heads/bot-probe-$GITHUB_RUN_ID" -f sha="$head"
-          exit $failed
+            --allowedTools "Skill,Write,Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr comment ${{ github.event.pull_request.number }} --body-file review.md)"

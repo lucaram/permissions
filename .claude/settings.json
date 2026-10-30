@@ -1,0 +1,10 @@
+{
+  "extraKnownMarketplaces": {
+    "qe-skills": {
+      "source": { "source": "github", "repo": "lucaram/qe-skills" }
+    }
+  },
+  "enabledPlugins": {
+    "qe@qe-skills": true
+  }
+}
