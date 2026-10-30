@@ -5,7 +5,7 @@ name: PR review
 
 on:
   pull_request:
-    types: [opened]
+    types: [opened, synchronize]   # synchronize = each new push to the PR
 
 # The built-in Actions token gets read-only access; the bot's App token does the commenting.
 permissions:
@@ -35,10 +35,13 @@ jobs:
             PR NUMBER: ${{ github.event.pull_request.number }}
 
             Review this pull request for correctness, clarity and missing tests.
-            Post your review as a single PR comment with `gh pr comment`.
+            Write your review to review.md with the Write tool, then post it with
+            `gh pr comment ${{ github.event.pull_request.number }} --body-file review.md`.
             You only recommend: never approve, push or merge.
           claude_args: |
-            --allowedTools "Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr comment:*)"
+            --allowedTools "Write,Bash(gh pr view:*),Bash(gh pr diff:*),Bash(gh pr comment:*)"
+          # Practice only: shows each tool call in the log. Turn off for private code.
+          show_full_output: true
 
   # Practice test: tries to approve and merge as the bot. Both must be refused by GitHub.
   # Remove this job once the restriction is confirmed.
